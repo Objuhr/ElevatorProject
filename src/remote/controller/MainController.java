@@ -10,8 +10,12 @@ import elevator.Elevators;
 public class MainController {
 	public static RemoteController[] controllers;
 	public static int amountOfElevators = Elevators.DefaultNumberOfElevators;
+	public static int amountOfFloors = Elevators.DefaultTopFloor + 1;
 	private static Socket socket = null;
 	private static Communicator c = null;
+	
+	private static ButtonOrderQue q = new ButtonOrderQue();
+	private static ActionQue a = new ActionQue();
 	
 	private static String ip = "localhost";
 	private static int port = Elevators.defaultPort;
@@ -21,16 +25,6 @@ public class MainController {
 		initConnection();
 		initControllers();
 		initInputReaders();
-	}
-	
-	public static void initControllers() {
-		controllers = new RemoteController[amountOfElevators];
-		
-
-		for(int i = 0; i < amountOfElevators; i++) {
-			controllers[i] = new RemoteController(i + 1, c);
-			controllers[i].start();
-		}
 	}
 	
 	public static void parseInput(String[] args) {
@@ -62,10 +56,17 @@ public class MainController {
 		c = new Communicator(os, is);
 	}
 	
-	public static void initInputReaders() {
-		ActionQue a = new ActionQue();
-		ButtonOrderQue q = new ButtonOrderQue();
+	public static void initControllers() {
+		controllers = new RemoteController[amountOfElevators];
 		
+
+		for(int i = 0; i < amountOfElevators; i++) {
+			controllers[i] = new RemoteController(i + 1, c, q);
+			controllers[i].start();
+		}
+	}
+	
+	public static void initInputReaders() {		
 		new WorkDistributer(q).start();
 		new Reciever(c, a).start();
 		new Parser(c, a, q).run();

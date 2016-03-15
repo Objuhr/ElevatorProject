@@ -203,7 +203,7 @@ public class Elevators {
   /**
    * Default number of elevators = 1
    */
-  public final static int DefaultNumberOfElevators = 1;
+  public final static int DefaultNumberOfElevators = 5;
   /**
    * Default top floor number = 2
    */

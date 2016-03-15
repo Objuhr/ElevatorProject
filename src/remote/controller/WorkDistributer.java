@@ -12,15 +12,11 @@ public class WorkDistributer extends Thread {
 		while(true) {
 			ButtonOrder order = orderQue.get();
 
-			boolean added = false;
 			for(RemoteController r : MainController.controllers) {
 				if(r.putRequest(order)) {
-					added = true;
+					orderQue.acceptOrder(order);
 					break;
 				}
-			}
-			if(!added) {
-				orderQue.put(order);
 			}
 
 		}
