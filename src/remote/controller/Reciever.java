@@ -13,32 +13,20 @@ public class Reciever extends Thread {
 	public static final int defaultPort = 4711;
 
 	private Socket socket;
-	private Communicator communicator;
-	private FifoQue callQue = new FifoQue();
+	private Communicator c;
+	private ActionQue a;
+	private ButtonOrderQue callQue = new ButtonOrderQue();
 	
-	public Reciever() {
-		try {
-			socket = new Socket("localhost", defaultPort);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		InputStream is = null;
-		OutputStream os = null;
-		try {
-			is = socket.getInputStream();
-			os = socket.getOutputStream();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		communicator = new Communicator(os, is);
+	public Reciever(Communicator c, ActionQue a) {
+		this.c = c;
+		this.a = a;
 	}
 	
 	@Override
 	public void run() {
 		while(true) {
-			String action = communicator.recieve();
-			Parser e = new Parser(action, communicator, callQue);
-			e.start();
+			String action = c.recieve();
+			a.putAction(action);
 		}
 	}
 }

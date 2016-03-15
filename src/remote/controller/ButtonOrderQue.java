@@ -4,12 +4,12 @@ import java.util.LinkedList;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class FifoQue {
-	private LinkedList<ButtonCalls> que = new LinkedList<ButtonCalls>();
+public class ButtonOrderQue {
+	private LinkedList<ButtonOrder> que = new LinkedList<ButtonOrder>();
 	private ReentrantLock queLock = new ReentrantLock();
 	private Condition newElements = queLock.newCondition();
 	
-	public ButtonCalls get() {
+	public ButtonOrder get() {
 		queLock.lock();
 		try {
 			while(que.size() == 0) newElements.await();
@@ -23,7 +23,7 @@ public class FifoQue {
 		return null;
 	}
 	
-	public void put(ButtonCalls val) {
+	public void put(ButtonOrder val) {
 		queLock.lock();
 		try {
 			que.add(val);
