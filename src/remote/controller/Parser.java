@@ -8,9 +8,10 @@ public class Parser extends Thread {
 	private ButtonOrderQue callQue;
 	private ActionQue actionQue;
 
-	public Parser (Communicator c, ActionQue a){
+	public Parser (Communicator c, ActionQue a, ButtonOrderQue q){
 		communicator = c;
 		actionQue = a;
+		callQue = q;
 	}
 
 	private String[] parseInput(String input) {
@@ -58,5 +59,9 @@ public class Parser extends Thread {
 	private void buttonPressed(int floor, int direction) {
 		ButtonOrder e = new ButtonOrder(floor, direction);
 		callQue.put(e);
+	}
+	
+	private void elevatorOrder(int elevatorID, int targetFloor) {
+		MainController.controllers[elevatorID - 1].addOrder(targetFloor);
 	}
 }

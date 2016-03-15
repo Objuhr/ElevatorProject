@@ -14,6 +14,7 @@ public class Communicator {
 	private ReentrantLock sendLock = new ReentrantLock();
 	private ReentrantLock receiveLock = new ReentrantLock();
 	
+	
 	public Communicator(OutputStream os, InputStream is) {
 		in = new BufferedReader(new InputStreamReader(is));
 		p = new PrintStream(os);

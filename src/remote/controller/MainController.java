@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 
-import elevator.ElevatorIO;
 import elevator.Elevators;
 
 public class MainController {
@@ -21,11 +20,12 @@ public class MainController {
 		parseInput(args);
 		initConnection();
 		initControllers();
-		
-		controllers = new RemoteController[amountOfElevators];
+		initInputReaders();
 	}
 	
 	private static void initControllers() {
+		controllers = new RemoteController[amountOfElevators];
+		
 		int i = 1;
 		for(RemoteController r : controllers) {
 			r = new RemoteController(i, c);
@@ -61,13 +61,14 @@ public class MainController {
 			e.printStackTrace();
 		}
 		c = new Communicator(os, is);
-		
+	}
+	
+	private static void initInputReaders() {
 		ActionQue a = new ActionQue();
+		ButtonOrderQue q = new ButtonOrderQue();
 		
-		Reciever r = new Reciever(c, a);
-		Parser p = new Parser(c, a);
-		
-		r.start();
-		p.start();
+		new WorkDistributer(q).start();
+		new Reciever(c, a).start();
+		new Parser(c, a, q).run();
 	}
 }

@@ -266,7 +266,7 @@ public class Elevators {
    * A boolean option that indicates whether a TCP socket(s) must be open for for input/output.
    * Defaults to false. Set by "-tcp" command line option
    */
-  protected static boolean tcp = false;
+  protected static boolean tcp = true;
   /**
    * A boolean option that indicates whether an object with the getAllImpl class must
    * be created and its remote reference (stub with the GetAll remote interface)

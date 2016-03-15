@@ -13,6 +13,7 @@ public class ButtonOrderQue {
 		queLock.lock();
 		try {
 			while(que.size() == 0) newElements.await();
+			
 			return que.removeFirst();
 		} catch (InterruptedException e) {
 			e.printStackTrace();
@@ -21,6 +22,10 @@ public class ButtonOrderQue {
 		}
 		
 		return null;
+	}
+	
+	public boolean isEmpty() {
+		return que.isEmpty();
 	}
 	
 	public void put(ButtonOrder val) {
