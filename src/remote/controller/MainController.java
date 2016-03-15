@@ -23,18 +23,17 @@ public class MainController {
 		initInputReaders();
 	}
 	
-	private static void initControllers() {
+	public static void initControllers() {
 		controllers = new RemoteController[amountOfElevators];
 		
-		int i = 1;
-		for(RemoteController r : controllers) {
-			r = new RemoteController(i, c);
-			r.start();
-			i++;
+
+		for(int i = 0; i < amountOfElevators; i++) {
+			controllers[i] = new RemoteController(i + 1, c);
+			controllers[i].start();
 		}
 	}
 	
-	private static void parseInput(String[] args) {
+	public static void parseInput(String[] args) {
 		if(args.length > 0) {
 			amountOfElevators = Integer.parseInt(args[0]);
 		}
@@ -46,7 +45,7 @@ public class MainController {
 		}
 	}
 	
-	private static void initConnection() {
+	public static void initConnection() {
 		try {
 			socket = new Socket(ip, port);
 		} catch (IOException e) {
@@ -63,7 +62,7 @@ public class MainController {
 		c = new Communicator(os, is);
 	}
 	
-	private static void initInputReaders() {
+	public static void initInputReaders() {
 		ActionQue a = new ActionQue();
 		ButtonOrderQue q = new ButtonOrderQue();
 		

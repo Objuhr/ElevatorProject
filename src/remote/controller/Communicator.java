@@ -23,7 +23,7 @@ public class Communicator {
 	public void send(String send) {
 		sendLock.lock();
 		try {
-			p.print(send);
+			p.println(send);
 		} finally {
 			sendLock.unlock();
 		}
@@ -45,7 +45,6 @@ public class Communicator {
 			if(input != null) break;
 			Thread.yield();
 		}
-
 		return input;
 	}
 }

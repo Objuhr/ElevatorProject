@@ -17,7 +17,7 @@ public class RemoteController extends Thread {
 	private Condition newOrder = orderLock.newCondition();
 
 	private ReentrantLock positionLock = new ReentrantLock();
-	private Condition stop = orderLock.newCondition();
+	private Condition stop = positionLock.newCondition();
 
 	public RemoteController(int id, Communicator c) {
 		this.id = id;
@@ -25,13 +25,12 @@ public class RemoteController extends Thread {
 	}
 
 	private boolean rightDirection(ButtonOrder b) {
-		if(b.floor >= (double) target && direction == 1)
+		
+		if(b.floor >= target && direction == 1)
 			return true;
-		else if (b.floor <= (double) target && direction == -1)
+		else if (b.floor <= target && direction == -1)
 			return true;
 		else if (direction == 0) {
-			if(b.floor > position) direction = 1;
-			if(b.floor < position) direction = -1;
 			return true;
 		}
 
@@ -69,8 +68,9 @@ public class RemoteController extends Thread {
 	public void setPosition(double pos) {
 		positionLock.lock();
 		try {
+			System.err.println("Pos: " + pos + " target: " + target);
 			position = pos;
-			if(position == target) {
+			if(Math.abs(pos - target) < 0.05) {
 				c.send("m " + id + " 0");
 				stop.signal();
 			}
@@ -83,22 +83,21 @@ public class RemoteController extends Thread {
 		orderLock.lock();
 		try {
 			if(direction == 1) {
-				if(upOrders.size() == 0) {
-					direction = 0;
-				} else {
+				if(!upOrders.isEmpty()) {
 					return mostImidietOrder(upOrders);
 				}
 			}
 			if(direction == -1) {
-				if(downOrders.size() == 0){
-					direction = 0;
-				} else {
+				if(!downOrders.isEmpty()){
 					return mostImidietOrder(downOrders);
 				}
 			}
+			direction = 0;
+
 			while(upOrders.size() == 0 && downOrders.size() == 0) {
 				newOrder.await();
 			}
+
 			LinkedList<ButtonOrder> l = null;
 
 			if(downOrders.size() != 0) {
@@ -131,30 +130,44 @@ public class RemoteController extends Thread {
 		return orders.remove(pos);
 	}
 
-	private void startToMove(ButtonOrder b) {
-		target = b.floor;
-		if(target > position) {
-			c.send("m " + id + " 1");
-		} else {
-			c.send("m " + id + " -1");
+	private void move(ButtonOrder b) {
+		orderLock.lock();
+		try {
+			target = b.floor;
+			if(Math.abs(position - target) < 0.05) return;
+			
+			if(target > position) {
+				c.send("m " + id + " 1");
+			} else {
+				c.send("m " + id + " -1");
+			}
+		} finally {
+			orderLock.unlock();
 		}
+		
+		waitUntilArrive();
 	}
 
 	public void addOrder(int floor) {
+		orderLock.lock();
 		if(floor == target) return;
-		
-		if(floor < target) 
-			downOrders.add(new ButtonOrder(floor, -1));
-		else 
-			upOrders.add(new ButtonOrder(floor, 1));
+		try {
+			if(floor < target) 
+				downOrders.add(new ButtonOrder(floor, -1));
+			else 
+				upOrders.add(new ButtonOrder(floor, 1));
+
+			newOrder.signal();
+		} finally {
+			orderLock.unlock();
+		}
 	}
-	
+
 	@Override
 	public void run() {
 		while(true) {
 			ButtonOrder order = nextOrder();
-			startToMove(order);
-			waitUntilArrive();
+			move(order);
 		}
 	}
 }

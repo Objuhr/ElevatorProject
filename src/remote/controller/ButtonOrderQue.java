@@ -12,7 +12,7 @@ public class ButtonOrderQue {
 	public ButtonOrder get() {
 		queLock.lock();
 		try {
-			while(que.size() == 0) newElements.await();
+			while(que.isEmpty()) newElements.await();
 			
 			return que.removeFirst();
 		} catch (InterruptedException e) {

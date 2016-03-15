@@ -22,13 +22,9 @@ public class ActionQue {
 	public String getAction() {
 		queLock.lock();
 		try {
-			String a = actionQue.removeFirst();
-			while(a == null) {
-				newAction.await();
-				a = actionQue.removeFirst();
-			}
-			
-			return a;
+			while(actionQue.isEmpty()) newAction.await();
+
+			return actionQue.removeFirst();
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} finally {

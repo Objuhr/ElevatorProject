@@ -21,8 +21,7 @@ public class Parser extends Thread {
 		
 		while(tok.hasMoreTokens()) {
 			if(i > 3) {
-				System.err.println("Wrong amount of arguments"); 
-				return null;
+				break;
 			}
 			action[i] = tok.nextToken();
 			i++;
