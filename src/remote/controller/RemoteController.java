@@ -7,7 +7,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class RemoteController extends Thread {
 	private int id = - 1;
 	private int motor = 0;
-	
+
 	private LinkedList<ButtonOrder> upOrders = new LinkedList<ButtonOrder>();
 	private LinkedList<ButtonOrder> downOrders = new LinkedList<ButtonOrder>();
 
@@ -25,6 +25,10 @@ public class RemoteController extends Thread {
 	private ReentrantLock positionLock = new ReentrantLock();
 	private Condition stop = positionLock.newCondition();
 
+	private ReentrantLock doorLock = new ReentrantLock();
+	private Condition doorOpenedAndClosed = doorLock.newCondition();
+	private int doorMovements = 0;
+	
 	public RemoteController(int id, Communicator c, ButtonOrderQue q) {
 		this.id = id;
 		this.c = c;
@@ -65,11 +69,19 @@ public class RemoteController extends Thread {
 	private void waitUntilArrive() {
 		positionLock.lock();
 		try {
-			while(Math.abs(position - (double) target) >= 0.05) {
-				stop.await();
-				System.err.println("ID: " + id + " Wait");
+			if(motor == 1) {
+				while(position > target - 0.05) {
+					System.err.println("ID: " + id + " Wait");
+					stop.await();
+				}
+			} else {
+				while(position < target + 0.05) {
+					stop.await();
+					System.err.println("ID: " + id + " Wait");
+				}
 			}
 			System.err.println("ID: " + id +  " Left");
+			openDoors();
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} finally {
@@ -77,9 +89,36 @@ public class RemoteController extends Thread {
 		}
 	}
 
+	public void doorMoved() {
+		doorLock.lock();
+		doorMovements++;
+		if(doorMovements == 8)
+			doorOpenedAndClosed.signal();
+		
+	}
+	
+	private void openDoors() {
+		doorLock.lock();
+		try {
+			doorMovements = 0;
+			
+			while(doorMovements < 8) doorOpenedAndClosed.await();
+			
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			doorLock.unlock();
+		}
+	}
+	
 	public void setPosition(double pos) {
 		positionLock.lock();
 		try {
+			if(position == pos) {
+				doorMoved();
+				return;
+			}
+			
 			position = pos;
 			if(Math.abs(pos - (double) target) < 0.05) {
 				c.send("m " + id + " 0");
@@ -197,7 +236,7 @@ public class RemoteController extends Thread {
 						target = floor;
 						if(currentOrder != null)
 							downOrders.add(currentOrder);
-						
+
 						currentOrder = order;
 					} else {
 						downOrders.add(order);
