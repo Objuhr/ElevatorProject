@@ -6,14 +6,15 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class RemoteController extends Thread {
 	private int id = - 1;
+	private int motor = 0;
 	
 	private LinkedList<ButtonOrder> upOrders = new LinkedList<ButtonOrder>();
 	private LinkedList<ButtonOrder> downOrders = new LinkedList<ButtonOrder>();
-	
+
 	private double position = 0;
 	private int direction = 0;
 	private int target = 0;
-	
+
 	private Communicator c;
 	private ButtonOrderQue buttonOrderQue;
 	private ButtonOrder currentOrder = null;
@@ -64,9 +65,11 @@ public class RemoteController extends Thread {
 	private void waitUntilArrive() {
 		positionLock.lock();
 		try {
-			while(Math.abs(position - target) >= 0.01) {
+			while(Math.abs(position - (double) target) >= 0.05) {
 				stop.await();
+				System.err.println("ID: " + id + " Wait");
 			}
+			System.err.println("ID: " + id +  " Left");
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} finally {
@@ -77,13 +80,16 @@ public class RemoteController extends Thread {
 	public void setPosition(double pos) {
 		positionLock.lock();
 		try {
-			System.err.println("Pos: " + pos + " target: " + target + " dir: " + direction);
 			position = pos;
-			if(Math.abs(pos - target) < 0.01) {
+			if(Math.abs(pos - (double) target) < 0.05) {
 				c.send("m " + id + " 0");
+				motor = 0;
 				buttonOrderQue.carriedOut(currentOrder);
 				currentOrder = null;
 				stop.signal();
+			}
+			if (Math.abs(pos - Math.round(pos)) < 0.05) {
+				c.send("s " + id + " " + Math.round(pos));
 			}
 		} finally {
 			positionLock.unlock();
@@ -125,9 +131,17 @@ public class RemoteController extends Thread {
 	}
 
 	private ButtonOrder mostImidietOrder(LinkedList<ButtonOrder> orders) {
+		while(orders.isEmpty())
+		{
+			try {
+				newOrder.await();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
 		int pos = 0;
 		int currentPos = 0;
-		int val = orders.getFirst().floor;
+		int val = MainController.amountOfFloors;
 		for(ButtonOrder o : orders) {
 			if(Math.abs(o.floor - (int) this.position) < val)
 				pos = currentPos;
@@ -138,32 +152,76 @@ public class RemoteController extends Thread {
 
 	private void move(ButtonOrder b) {
 		orderLock.lock();
+		positionLock.lock();
 		try {
 			target = b.floor;
-			if(Math.abs(position - target) < 0.05) return;
+			if(Math.abs(position - (double) target) < 0.05) {
+				stop.signalAll(); 
+				return;
+			}
 
 			if(target > position) {
 				c.send("m " + id + " 1");
+				motor = 1;
 			} else {
 				c.send("m " + id + " -1");
+				motor = -1;
 			}
 		} finally {
+			positionLock.unlock();
 			orderLock.unlock();
 		}
 
 		waitUntilArrive();
 	}
 
+	private boolean orderExist(ButtonOrder order) {
+		LinkedList<ButtonOrder> que = (order.direction == -1) ? downOrders : upOrders;
+
+		for(ButtonOrder b : que) {
+			if(b.floor == order.floor)
+				return true;
+		}
+
+		return false;
+	}
+
 	public void addOrder(int floor) {
 		orderLock.lock();
-		if(floor == target) return;
 		try {
-			if(floor < target) 
-				downOrders.add(new ButtonOrder(floor, -1));
-			else 
-				upOrders.add(new ButtonOrder(floor, 1));
+			if((double) floor < position) {
+				ButtonOrder order = new ButtonOrder(floor, -1);
+				if(!orderExist(order)) {
 
-			newOrder.signal();
+					if(floor > target) {
+						target = floor;
+						if(currentOrder != null)
+							downOrders.add(currentOrder);
+						
+						currentOrder = order;
+					} else {
+						downOrders.add(order);
+					}
+					buttonOrderQue.acceptOrder(order);
+					newOrder.signal();
+				}
+			} else {
+				ButtonOrder order = new ButtonOrder(floor, 1);
+				if(!orderExist(order)) {
+
+					if(floor < target) {
+						target = floor;
+						if(currentOrder != null)
+							upOrders.add(currentOrder);
+
+						currentOrder = order;
+					} else {
+						upOrders.add(order);
+					}
+					buttonOrderQue.acceptOrder(order);
+					newOrder.signal();
+				}
+			}
 		} finally {
 			orderLock.unlock();
 		}
