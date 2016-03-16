@@ -92,7 +92,9 @@ public class RemoteController extends Thread {
 	public void doorMoved() {
 		doorLock.lock();
 		doorMovements++;
-		if(doorMovements == 8)
+		if(doorMovements == 4)
+			c.send("d " + id + " -1");
+		else if(doorMovements == 8)
 			doorOpenedAndClosed.signal();
 		
 	}
