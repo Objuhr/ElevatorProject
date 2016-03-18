@@ -5,6 +5,8 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class RemoteController extends Thread {
+	public static final int TIMEDOORSAREOPEN = 1000;
+	
 	private int id = - 1;
 	private int motor = 0;
 
@@ -26,16 +28,246 @@ public class RemoteController extends Thread {
 	private Condition stop = positionLock.newCondition();
 
 	private ReentrantLock doorLock = new ReentrantLock();
-	private Condition doorOpenedAndClosed = doorLock.newCondition();
+	private Condition doorOpenedOrClosed = doorLock.newCondition();
 	private int doorMovements = 0;
-	
+	private boolean doorsAreOpening = false;
+
+	private boolean stopped = false;
+
 	public RemoteController(int id, Communicator c, ButtonOrderQue q) {
 		this.id = id;
 		this.c = c;
 		this.buttonOrderQue = q;
 	}
 
+	@Override
+	public void run() {
+		while(true) {
+			nextOrder();
+			move();
+			waitUntilArrive();
+		}
+	}
+
+	/**************************************************
+	   Functions used by the remoteControlle thread
+	 **************************************************/
+
+	private void waitUntilArrive() {
+		positionLock.lock();
+		try {
+			while(motor != 0) {
+				stop.await();
+			}
+
+			
+			c.send("m " + id + " 0");
+			if(stopped == false) 
+				openDoors();
+			else 
+				emptyQues();
+			
+			buttonOrderQue.carriedOut(currentOrder);
+			currentOrder = null; 
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			positionLock.unlock();
+		}
+	}
+
+	private void openDoors() {
+		doorLock.lock();
+		try {
+			doorsAreOpening = true;
+			doorMovements = 0;
+			c.send("d " + id + " 1");
+
+			while(doorMovements < 4) {
+				doorOpenedOrClosed.await();
+			}
+
+			Thread.sleep(TIMEDOORSAREOPEN);
+			c.send("d " + id + " -1");
+
+			while(doorMovements < 8) {
+				doorOpenedOrClosed.await();
+			}
+
+			doorsAreOpening = false;
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			doorLock.unlock();
+		}
+	}
+
+	private void nextOrder() {
+		orderLock.lock();
+		try {
+			if(direction == 1) {
+				if(!upOrders.isEmpty()) {
+					if(mostImidietOrder(upOrders)) {
+						return;
+					} else if (!downOrders.isEmpty()) {
+						direction = -1;
+						mostDistantOrder(downOrders);
+						return;
+					}
+				}
+			}
+			if(direction == -1) {
+				if(!downOrders.isEmpty()){
+					if(mostImidietOrder(downOrders)) {
+						return;
+					} else if (!upOrders.isEmpty()) {
+						direction = 1;
+						mostDistantOrder(upOrders);
+						return;
+					}
+				}
+			}
+			direction = 0;
+
+			while(upOrders.isEmpty() && downOrders.isEmpty()) {
+				newOrder.await();
+			}
+
+			if(!downOrders.isEmpty()) {
+				direction = -1;
+				mostDistantOrder(downOrders);
+				return;
+			} else {
+				direction = 1;
+				mostDistantOrder(upOrders);
+				return;
+			}
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			orderLock.unlock();
+		}
+	}
+
+
+	private void mostDistantOrder(LinkedList<ButtonOrder> orders) {
+		while(orders.isEmpty())
+		{
+			try {
+				newOrder.await();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+
+		ButtonOrder distant = null;
+		int dir = orders.getFirst().direction;
+		int val = (direction == 1) ? MainController.amountOfFloors + 1: -1;
+
+		for(ButtonOrder o : orders) {
+			if(dir == 1) {
+				if(o.floor < val) {
+					val = o.floor;
+					distant = o;
+				}
+			} else {
+				if(o.floor > val) {
+					val = o.floor;
+					distant = o;
+				}
+			}
+		}
+
+		currentOrder = distant;
+		orders.remove(distant);
+		target = currentOrder.floor;
+	}
+
+	private void move() {
+		positionLock.lock();
+		try {
+			if(Math.abs(position - (double) target) < 0.05) {
+				stop.signal();
+				motor = 0;
+				c.send("m " + id + " 0");
+				return;
+			}
+
+			if(target > position) {
+				c.send("m " + id + " 1");
+				motor = 1;
+			} else {
+				c.send("m " + id + " -1");
+				motor = -1;
+			}
+		} finally {
+			positionLock.unlock();
+		}
+	}
+
+	private void emptyQues() {
+		orderLock.lock();
+		try {
+			for(ButtonOrder o : downOrders) {
+				buttonOrderQue.carriedOut(o);
+			}
+			for(ButtonOrder o : upOrders) {
+				buttonOrderQue.carriedOut(o);
+			}
+			buttonOrderQue.returnList(downOrders);
+			buttonOrderQue.returnList(upOrders);		
+
+			downOrders = new LinkedList<ButtonOrder>();
+			upOrders = new LinkedList<ButtonOrder>();
+		} finally {
+			orderLock.unlock();
+		}
+	}
+
+	private boolean mostImidietOrder(LinkedList<ButtonOrder> orders) {
+		while(orders.isEmpty())
+		{
+			try {
+				newOrder.await();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		int pos = -1;
+		int currentPos = 0;
+		int dir = orders.getFirst().direction;
+
+		int val = (dir == 1) ? MainController.amountOfFloors : -1;
+		int elevatorPos = Math.round((float) position);
+
+		for(ButtonOrder o : orders) {
+			if(dir == 1) {
+				if(o.floor > elevatorPos && o.floor < val) {
+					pos = currentPos;
+					val = o.floor;
+				}
+			} else {
+				if(o.floor < elevatorPos && o.floor > val) {
+					pos = currentPos;
+					val = o.floor;
+				}
+			}
+			currentPos++;
+		}
+		if(pos == -1) 
+			return false;
+
+		currentOrder = orders.remove(pos);
+		target = currentOrder.floor;
+		return true;
+	}
+
+	/*****************************************************
+	   Functions used by by other threads in the monitor
+	 *****************************************************/
+
 	private boolean rightDirection(ButtonOrder b) {
+		if(stopped) return false;
 
 		if(b.floor > target && direction == 1)
 			return true;
@@ -66,154 +298,41 @@ public class RemoteController extends Thread {
 		}
 	}
 
-	private void waitUntilArrive() {
-		positionLock.lock();
-		try {
-			if(motor == 1) {
-				while(position > target - 0.05) {
-					System.err.println("ID: " + id + " Wait");
-					stop.await();
-				}
-			} else {
-				while(position < target + 0.05) {
-					stop.await();
-					System.err.println("ID: " + id + " Wait");
-				}
-			}
-			System.err.println("ID: " + id +  " Left");
-			openDoors();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		} finally {
-			positionLock.unlock();
-		}
-	}
+	private void doorMoved() {
 
-	public void doorMoved() {
-		doorLock.lock();
 		doorMovements++;
 		if(doorMovements == 4)
-			c.send("d " + id + " -1");
+			doorOpenedOrClosed.signal();
 		else if(doorMovements == 8)
-			doorOpenedAndClosed.signal();
-		
+			doorOpenedOrClosed.signal();
 	}
-	
-	private void openDoors() {
+
+	public void setPosition(double pos) {
 		doorLock.lock();
 		try {
-			doorMovements = 0;
-			
-			while(doorMovements < 8) doorOpenedAndClosed.await();
-			
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		} finally {
-			doorLock.unlock();
-		}
-	}
-	
-	public void setPosition(double pos) {
-		positionLock.lock();
-		try {
-			if(position == pos) {
+			if(doorsAreOpening) {
 				doorMoved();
 				return;
 			}
-			
+		} finally {
+			doorLock.unlock();
+		}
+
+		positionLock.lock();
+		try {
+
 			position = pos;
 			if(Math.abs(pos - (double) target) < 0.05) {
 				c.send("m " + id + " 0");
 				motor = 0;
-				buttonOrderQue.carriedOut(currentOrder);
-				currentOrder = null;
 				stop.signal();
 			}
 			if (Math.abs(pos - Math.round(pos)) < 0.05) {
-				c.send("s " + id + " " + Math.round(pos));
+				c.send("s " + id + " " + Math.round((float) pos));
 			}
 		} finally {
 			positionLock.unlock();
 		}
-	}
-
-	private ButtonOrder nextOrder() {
-		orderLock.lock();
-		try {
-			if(direction == 1) {
-				if(!upOrders.isEmpty()) {
-					return mostImidietOrder(upOrders);
-				}
-			}
-			if(direction == -1) {
-				if(!downOrders.isEmpty()){
-					return mostImidietOrder(downOrders);
-				}
-			}
-			direction = 0;
-
-			while(upOrders.isEmpty() && downOrders.isEmpty()) {
-				newOrder.await();
-			}
-
-			if(!downOrders.isEmpty()) {
-				direction = -1;
-				return mostImidietOrder(downOrders);
-			} else {
-				direction = 1;
-				return mostImidietOrder(upOrders);
-			}
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		} finally {
-			orderLock.unlock();
-		}
-		return null;
-	}
-
-	private ButtonOrder mostImidietOrder(LinkedList<ButtonOrder> orders) {
-		while(orders.isEmpty())
-		{
-			try {
-				newOrder.await();
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-		}
-		int pos = 0;
-		int currentPos = 0;
-		int val = MainController.amountOfFloors;
-		for(ButtonOrder o : orders) {
-			if(Math.abs(o.floor - (int) this.position) < val)
-				pos = currentPos;
-			currentPos++;
-		}
-		return orders.remove(pos);
-	}
-
-	private void move(ButtonOrder b) {
-		orderLock.lock();
-		positionLock.lock();
-		try {
-			target = b.floor;
-			if(Math.abs(position - (double) target) < 0.05) {
-				stop.signalAll(); 
-				return;
-			}
-
-			if(target > position) {
-				c.send("m " + id + " 1");
-				motor = 1;
-			} else {
-				c.send("m " + id + " -1");
-				motor = -1;
-			}
-		} finally {
-			positionLock.unlock();
-			orderLock.unlock();
-		}
-
-		waitUntilArrive();
 	}
 
 	private boolean orderExist(ButtonOrder order) {
@@ -228,13 +347,31 @@ public class RemoteController extends Thread {
 	}
 
 	public void addOrder(int floor) {
+		if(floor == 32000) {
+			orderLock.lock();
+			try {
+				stopped = true;
+			} finally {
+				orderLock.unlock();
+			}
+
+			positionLock.lock();
+			try {
+				c.send("m " + id + " 0");
+				stop.signal();
+				return;
+			} finally {
+				positionLock.unlock();
+			}
+		}
 		orderLock.lock();
 		try {
-			if((double) floor < position) {
+			stopped = false;
+			if(floor < (double) position) {
 				ButtonOrder order = new ButtonOrder(floor, -1);
 				if(!orderExist(order)) {
 
-					if(floor > target) {
+					if(floor > target && direction == -1) {
 						target = floor;
 						if(currentOrder != null)
 							downOrders.add(currentOrder);
@@ -243,6 +380,7 @@ public class RemoteController extends Thread {
 					} else {
 						downOrders.add(order);
 					}
+
 					buttonOrderQue.acceptOrder(order);
 					newOrder.signal();
 				}
@@ -250,7 +388,7 @@ public class RemoteController extends Thread {
 				ButtonOrder order = new ButtonOrder(floor, 1);
 				if(!orderExist(order)) {
 
-					if(floor < target) {
+					if(floor < target && direction == 1) {
 						target = floor;
 						if(currentOrder != null)
 							upOrders.add(currentOrder);
@@ -265,14 +403,6 @@ public class RemoteController extends Thread {
 			}
 		} finally {
 			orderLock.unlock();
-		}
-	}
-
-	@Override
-	public void run() {
-		while(true) {
-			currentOrder = nextOrder();
-			move(currentOrder);
 		}
 	}
 }

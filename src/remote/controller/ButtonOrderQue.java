@@ -34,10 +34,7 @@ public class ButtonOrderQue {
 		queLock.lock();
 		try {
 			while(pendingOrders.isEmpty()) newElements.await();
-
-			ButtonOrder order = pendingOrders.removeLast();
-			pendingOrders.addFirst(order);
-			return order;
+			return pendingOrders.removeLast();
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} finally {
@@ -74,5 +71,18 @@ public class ButtonOrderQue {
 		}
 
 		return false;
+	}
+
+	public void returnList(LinkedList<ButtonOrder> list) {
+		queLock.lock();
+		try {
+			for(ButtonOrder b : list) {
+				if(!orderExist(b)) {
+					pendingOrders.add(b);
+				}
+			}
+		} finally {
+			queLock.unlock();
+		}
 	}
 }

@@ -21,4 +21,8 @@ public class WorkDistributer extends Thread {
 
 		}
 	}
+	
+//	private int evaluateOrder(ButtonOrder b, RemoteController r) {
+//		
+//	}
 }
