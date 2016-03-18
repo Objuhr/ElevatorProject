@@ -6,7 +6,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class RemoteController extends Thread {
 	public static final int TIMEDOORSAREOPEN = 1000;
-	
+
 	private int id = - 1;
 	private int motor = 0;
 
@@ -60,13 +60,17 @@ public class RemoteController extends Thread {
 				stop.await();
 			}
 
-			
+
 			c.send("m " + id + " 0");
-			if(stopped == false) 
-				openDoors();
-			else 
-				emptyQues();
-			
+			orderLock.lock();
+			try {
+				if(stopped == false) 
+					openDoors();
+				else 
+					emptyQues();
+			} finally {
+				orderLock.unlock();
+			}
 			buttonOrderQue.carriedOut(currentOrder);
 			currentOrder = null; 
 		} catch (InterruptedException e) {
@@ -206,22 +210,17 @@ public class RemoteController extends Thread {
 	}
 
 	private void emptyQues() {
-		orderLock.lock();
-		try {
-			for(ButtonOrder o : downOrders) {
-				buttonOrderQue.carriedOut(o);
-			}
-			for(ButtonOrder o : upOrders) {
-				buttonOrderQue.carriedOut(o);
-			}
-			buttonOrderQue.returnList(downOrders);
-			buttonOrderQue.returnList(upOrders);		
-
-			downOrders = new LinkedList<ButtonOrder>();
-			upOrders = new LinkedList<ButtonOrder>();
-		} finally {
-			orderLock.unlock();
+		for(ButtonOrder o : downOrders) {
+			buttonOrderQue.carriedOut(o);
 		}
+		for(ButtonOrder o : upOrders) {
+			buttonOrderQue.carriedOut(o);
+		}
+		buttonOrderQue.returnList(downOrders);
+		buttonOrderQue.returnList(upOrders);		
+
+		downOrders = new LinkedList<ButtonOrder>();
+		upOrders = new LinkedList<ButtonOrder>();
 	}
 
 	private boolean mostImidietOrder(LinkedList<ButtonOrder> orders) {
@@ -266,24 +265,10 @@ public class RemoteController extends Thread {
 	   Functions used by by other threads in the monitor
 	 *****************************************************/
 
-	private boolean rightDirection(ButtonOrder b) {
-		if(stopped) return false;
-
-		if(b.floor > target && direction == 1)
-			return true;
-		else if (b.floor < target && direction == -1)
-			return true;
-		else if (direction == 0) {
-			return true;
-		}
-
-		return false;
-	}
-
 	public boolean putRequest(ButtonOrder c) {
 		orderLock.lock();
 		try {
-			if(rightDirection(c)) {
+			if(!stopped) {
 				if(c.direction == -1) 
 					downOrders.add(c);
 				else
@@ -404,6 +389,45 @@ public class RemoteController extends Thread {
 		} finally {
 			orderLock.unlock();
 		}
+	}
+
+	public int getDirection() {
+		return direction;
+	}
+
+	public int getTarget() {
+		positionLock.lock();
+		try {
+			return target;
+		} finally {
+			positionLock.unlock();
+		}
+	}
+
+	public int getPosition() {
+		positionLock.lock();
+		try {
+			return Math.round((float) position);
+		} finally {
+			positionLock.unlock();
+		}
+	}
+
+	public int getNumberOfOrders() {
+		orderLock.lock();
+		try {
+			return upOrders.size() + downOrders.size();
+		} finally {
+			orderLock.unlock();
+		}
+	}
+
+	public boolean isStopped() {
+		return stopped;
+	}
+	
+	public int getID() {
+		return id;
 	}
 }
 
