@@ -195,7 +195,7 @@ public class Elevators {
 /**
  * Maximum possible number of elevators = 5
  */
-  public final static int MaxNumberOfElevators = 5;
+  public final static int MaxNumberOfElevators = 1;
   /**
    * Maximum possible number of the top floor = 6
    */
@@ -203,11 +203,11 @@ public class Elevators {
   /**
    * Default number of elevators = 1
    */
-  public final static int DefaultNumberOfElevators = 5;
+  public final static int DefaultNumberOfElevators = 3;
   /**
    * Default top floor number = 2
    */
-  public final static int DefaultTopFloor = 2;
+  public final static int DefaultTopFloor = 6;
   /**
    * System "end-of-line" character. Defaults to "\n".
    */

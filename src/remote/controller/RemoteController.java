@@ -56,28 +56,33 @@ public class RemoteController extends Thread {
 	private void waitUntilArrive() {
 		positionLock.lock();
 		try {
+
 			while(motor != 0) {
 				stop.await();
 			}
 
-
-			c.send("m " + id + " 0");
-			orderLock.lock();
-			try {
-				if(stopped == false) 
-					openDoors();
-				else 
-					emptyQues();
-			} finally {
-				orderLock.unlock();
-			}
-			buttonOrderQue.carriedOut(currentOrder);
-			currentOrder = null; 
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} finally {
 			positionLock.unlock();
 		}
+
+		c.send("m " + id + " 0");
+		orderLock.lock();
+		try {
+			if(stopped == true) {
+				buttonOrderQue.carriedOut(currentOrder);
+				buttonOrderQue.put(currentOrder);
+				emptyQues();
+				return;
+			}
+		} finally {
+			orderLock.unlock();
+		}
+
+		openDoors();
+		buttonOrderQue.carriedOut(currentOrder);
+		currentOrder = null; 
 	}
 
 	private void openDoors() {
@@ -91,10 +96,24 @@ public class RemoteController extends Thread {
 				doorOpenedOrClosed.await();
 			}
 
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			doorLock.unlock();
+		}
+		
+		try {
 			Thread.sleep(TIMEDOORSAREOPEN);
-			c.send("d " + id + " -1");
+		} catch (InterruptedException e1) {
+			e1.printStackTrace();
+		}
 
-			while(doorMovements < 8) {
+		doorLock.lock();
+		try {
+			c.send("d " + id + " -1");
+			doorMovements = 0;
+			
+			while(doorMovements < 4) {
 				doorOpenedOrClosed.await();
 			}
 
@@ -349,6 +368,7 @@ public class RemoteController extends Thread {
 				positionLock.unlock();
 			}
 		}
+
 		orderLock.lock();
 		try {
 			stopped = false;
@@ -356,7 +376,7 @@ public class RemoteController extends Thread {
 				ButtonOrder order = new ButtonOrder(floor, -1);
 				if(!orderExist(order)) {
 
-					if(floor > target && direction == -1) {
+					if(floor > target && direction == -1 && !doorsAreOpening) {
 						target = floor;
 						if(currentOrder != null)
 							downOrders.add(currentOrder);
@@ -373,7 +393,7 @@ public class RemoteController extends Thread {
 				ButtonOrder order = new ButtonOrder(floor, 1);
 				if(!orderExist(order)) {
 
-					if(floor < target && direction == 1) {
+					if(floor < target && direction == 1 && !doorsAreOpening) {
 						target = floor;
 						if(currentOrder != null)
 							upOrders.add(currentOrder);
@@ -425,7 +445,7 @@ public class RemoteController extends Thread {
 	public boolean isStopped() {
 		return stopped;
 	}
-	
+
 	public int getID() {
 		return id;
 	}
