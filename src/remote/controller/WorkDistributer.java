@@ -31,7 +31,6 @@ public class WorkDistributer extends Thread {
 			else {
 				// Try to put request
 				if(target.putRequest(order)) {
-					System.err.println("Order added to " + target.getID());
 					orderQue.acceptOrder(order);
 				} else {
 					orderQue.put(order);
@@ -44,7 +43,7 @@ public class WorkDistributer extends Thread {
 		if(r.isStopped()) return -1;
 
 		int elevatorDirection = r.getDirection();
-		if(elevatorDirection == b.direction || elevatorDirection == 0) {
+		if(elevatorDirection == b.direction) {
 			if(elevatorDirection == 1) {
 				if(b.floor > r.getTarget()) {
 					return b.floor - r.getTarget() + r.getNumberOfOrders();
