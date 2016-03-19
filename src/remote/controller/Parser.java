@@ -57,6 +57,8 @@ public class Parser extends Thread {
 	
 	private void buttonPressed(int floor, int direction) {
 		ButtonOrder e = new ButtonOrder(floor, direction);
+		System.err.println();
+		System.err.println("Parser tries to put bo: floor=" + floor + " dir=" +direction);
 		callQue.put(e);
 	}
 	

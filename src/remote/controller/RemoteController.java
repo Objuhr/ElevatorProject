@@ -4,6 +4,8 @@ import java.util.LinkedList;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import elevator.Elevators;
+
 public class RemoteController extends Thread {
 	public static final int TIMEDOORSAREOPEN = 1000;
 
@@ -45,7 +47,7 @@ public class RemoteController extends Thread {
 		while(true) {
 			nextOrder();
 			move();
-			waitUntilArrive();
+			awaitArrival();
 		}
 	}
 
@@ -53,7 +55,7 @@ public class RemoteController extends Thread {
 	   Functions used by the remoteControlle thread
 	 **************************************************/
 
-	private void waitUntilArrive() {
+	private void awaitArrival() {
 		positionLock.lock();
 		try {
 
@@ -71,8 +73,10 @@ public class RemoteController extends Thread {
 		orderLock.lock();
 		try {
 			if(stopped == true) {
-				buttonOrderQue.carriedOut(currentOrder);
-				buttonOrderQue.put(currentOrder);
+				if(currentOrder != null) {
+					buttonOrderQue.carriedOut(currentOrder);
+					buttonOrderQue.put(currentOrder);
+				}
 				emptyQues();
 				return;
 			}
@@ -101,7 +105,7 @@ public class RemoteController extends Thread {
 		} finally {
 			doorLock.unlock();
 		}
-		
+
 		try {
 			Thread.sleep(TIMEDOORSAREOPEN);
 		} catch (InterruptedException e1) {
@@ -112,7 +116,7 @@ public class RemoteController extends Thread {
 		try {
 			c.send("d " + id + " -1");
 			doorMovements = 0;
-			
+
 			while(doorMovements < 4) {
 				doorOpenedOrClosed.await();
 			}
@@ -287,16 +291,33 @@ public class RemoteController extends Thread {
 	public boolean putRequest(ButtonOrder c) {
 		orderLock.lock();
 		try {
-			if(!stopped) {
-				if(c.direction == -1) 
-					downOrders.add(c);
-				else
-					upOrders.add(c);
-				newOrder.signal();
+			if(stopped) return false;
 
-				return true;
+			if(c.direction == -1)  {
+				if(currentOrder != null) {
+					if(c.floor > currentOrder.floor && (double) c.floor < position) {
+						downOrders.add(currentOrder);
+						currentOrder = c;
+						target = c.floor;
+						return true;
+					} 
+				} 
+				downOrders.add(c);
+
+			} else {
+				if(currentOrder != null) {
+					if(c.floor < currentOrder.floor && (double) c.floor > position) {
+						upOrders.add(currentOrder);
+						currentOrder = c;
+						target = c.floor;
+						return true;
+					} 
+				}
+				upOrders.add(c);
 			}
-			return false;
+			newOrder.signal();
+			return true;
+
 		} finally {
 			orderLock.unlock();
 		}
@@ -324,7 +345,6 @@ public class RemoteController extends Thread {
 
 		positionLock.lock();
 		try {
-
 			position = pos;
 			if(Math.abs(pos - (double) target) < 0.05) {
 				c.send("m " + id + " 0");
@@ -340,10 +360,15 @@ public class RemoteController extends Thread {
 	}
 
 	private boolean orderExist(ButtonOrder order) {
+		if(currentOrder != null) {
+			if(currentOrder.floor == order.floor &&
+					currentOrder.direction == order.direction) return true;
+		}
+
 		LinkedList<ButtonOrder> que = (order.direction == -1) ? downOrders : upOrders;
 
 		for(ButtonOrder b : que) {
-			if(b.floor == order.floor)
+			if(b.floor == order.floor && b.direction == order.direction)
 				return true;
 		}
 
@@ -351,7 +376,7 @@ public class RemoteController extends Thread {
 	}
 
 	public void addOrder(int floor) {
-		if(floor == 32000) {
+		if(floor == Elevators.SPECIAL_FOR_STOP) {
 			orderLock.lock();
 			try {
 				stopped = true;
@@ -359,14 +384,16 @@ public class RemoteController extends Thread {
 				orderLock.unlock();
 			}
 
+
+
 			positionLock.lock();
 			try {
 				c.send("m " + id + " 0");
 				stop.signal();
-				return;
 			} finally {
 				positionLock.unlock();
 			}
+			return;
 		}
 
 		orderLock.lock();
@@ -424,7 +451,17 @@ public class RemoteController extends Thread {
 		}
 	}
 
-	public int getPosition() {
+	public double getPosition() {
+		positionLock.lock();
+		try {
+			return position;
+
+		} finally {
+			positionLock.unlock();
+		}
+	}
+
+	public int getFloor() {
 		positionLock.lock();
 		try {
 			return Math.round((float) position);

@@ -11,7 +11,7 @@ public class WorkDistributer extends Thread {
 	public void run() {
 		while(true) {
 			ButtonOrder order = orderQue.get();
-
+			
 			int topPriority = MainController.amountOfFloors*10;
 			RemoteController target = null;
 
@@ -26,14 +26,14 @@ public class WorkDistributer extends Thread {
 				}
 			}
 
-			if(target == null)
-				orderQue.put(order);
-			else {
+			if(target != null) {
+				System.err.println("Dist tries to give ele: " + target.getID() + 
+						" bo: floor=" + order.floor + " dir=" + order.direction);
 				// Try to put request
 				if(target.putRequest(order)) {
 					orderQue.acceptOrder(order);
-				} else {
-					orderQue.put(order);
+					System.err.println("Dist gave ele: " + target.getID() + 
+							" bo: floor=" + order.floor + " dir=" + order.direction);
 				}
 			}
 		}
@@ -46,17 +46,21 @@ public class WorkDistributer extends Thread {
 		if(elevatorDirection == b.direction) {
 			if(elevatorDirection == 1) {
 				if(b.floor > r.getTarget()) {
-					return b.floor - r.getTarget() + r.getNumberOfOrders();
+					return b.floor - r.getTarget() + Math.abs(r.getFloor() - r.getTarget());
+				} else if (b.floor > r.getPosition()) {
+					return b.floor - r.getFloor();
 				}
 			} else if (elevatorDirection == -1) {
 				if(b.floor < r.getTarget()) {
-					return  r.getTarget() - b.floor + r.getNumberOfOrders();
+					return  r.getTarget() - b.floor + Math.abs(r.getFloor() - r.getTarget());
+				} else if (b.floor < r.getPosition()) {
+					return r.getFloor() - b.floor;
 				}
 			}
 		}
 		if(elevatorDirection == 0)
-			return Math.abs(b.floor - r.getPosition()) + r.getNumberOfOrders();
+			return Math.abs(b.floor - r.getFloor()) + MainController.amountOfFloors*2;
 		else
-			return (MainController.amountOfFloors + Math.abs(b.floor - r.getTarget()) + r.getNumberOfOrders()) + 2;
+			return (MainController.amountOfFloors*3 + Math.abs(b.floor - r.getTarget()) + r.getNumberOfOrders());
 	}
 }

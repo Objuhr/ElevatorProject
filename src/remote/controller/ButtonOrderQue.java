@@ -34,7 +34,10 @@ public class ButtonOrderQue {
 		queLock.lock();
 		try {
 			while(pendingOrders.isEmpty()) newElements.await();
-			return pendingOrders.removeLast();
+
+			ButtonOrder order = pendingOrders.removeLast();
+			pendingOrders.add(order);
+			return order;
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} finally {

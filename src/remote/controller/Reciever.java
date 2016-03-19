@@ -13,6 +13,8 @@ public class Reciever extends Thread {
 	
 	@Override
 	public void run() {
+		Thread.currentThread().setPriority(Thread.MAX_PRIORITY);
+		
 		while(true) {
 			String action = c.recieve();
 			a.putAction(action);

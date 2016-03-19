@@ -12,7 +12,6 @@ public class Communicator {
 	private BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
 	private PrintStream p = System.out;
 	private ReentrantLock sendLock = new ReentrantLock();
-	private ReentrantLock receiveLock = new ReentrantLock();
 	
 	
 	public Communicator(OutputStream os, InputStream is) {
@@ -32,19 +31,13 @@ public class Communicator {
 	public String recieve() {
 		String input = null;
 
-		while(true) {
-			receiveLock.lock();
+		while(input == null) {
 			try {
 				input = in.readLine();
 			} catch (IOException e) {
 				e.printStackTrace();
-			} finally {
-				receiveLock.unlock();
 			}
-
-			if(input != null) break;
-			Thread.yield();
 		}
-		return input;
+		return new String(input);
 	}
 }
