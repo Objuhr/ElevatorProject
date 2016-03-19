@@ -49,12 +49,16 @@ public class WorkDistributer extends Thread {
 					return b.floor - r.getTarget() + Math.abs(r.getFloor() - r.getTarget());
 				} else if (b.floor > r.getPosition()) {
 					return b.floor - r.getFloor();
+				} else if (!r.gotPassengers()) {
+					return Math.abs(b.floor - r.getTarget());
 				}
 			} else if (elevatorDirection == -1) {
 				if(b.floor < r.getTarget()) {
 					return  r.getTarget() - b.floor + Math.abs(r.getFloor() - r.getTarget());
 				} else if (b.floor < r.getPosition()) {
 					return r.getFloor() - b.floor;
+				} else if (!r.gotPassengers()) {
+					return Math.abs(b.floor - r.getTarget());
 				}
 			}
 		}

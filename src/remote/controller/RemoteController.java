@@ -7,7 +7,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import elevator.Elevators;
 
 public class RemoteController extends Thread {
-	public static final int TIMEDOORSAREOPEN = 1000;
+	public static final int TIME_DOORS_ARE_OPEN = 1000;
+	public static final int WAIT_BEFORE_MOVE = 200;
 
 	private int id = - 1;
 	private int motor = 0;
@@ -36,6 +37,7 @@ public class RemoteController extends Thread {
 	private boolean doorsAreOpening = false;
 
 	private boolean stopped = false;
+	private boolean hasPassengers = false;
 
 	public RemoteController(int id, Communicator c, ButtonOrderQue q) {
 		this.id = id;
@@ -45,6 +47,7 @@ public class RemoteController extends Thread {
 
 	@Override
 	public void run() {
+		Thread.currentThread().setPriority(Thread.NORM_PRIORITY - 1);
 		while(true) {
 			nextOrder();
 			move();
@@ -76,11 +79,13 @@ public class RemoteController extends Thread {
 			if(stopped == true) {
 				if(currentOrder != null) {
 					buttonOrderQue.carriedOut(currentOrder);
-					buttonOrderQue.put(currentOrder);
+					currentOrder = null;
 				}
 				emptyQues();
+				direction = 0;
 				return;
 			}
+			hasPassengers = true;
 		} finally {
 			orderLock.unlock();
 		}
@@ -108,7 +113,7 @@ public class RemoteController extends Thread {
 		}
 
 		try {
-			Thread.sleep(TIMEDOORSAREOPEN);
+			Thread.sleep(TIME_DOORS_ARE_OPEN);
 		} catch (InterruptedException e1) {
 			e1.printStackTrace();
 		}
@@ -127,6 +132,12 @@ public class RemoteController extends Thread {
 			e.printStackTrace();
 		} finally {
 			doorLock.unlock();
+		}
+		
+		try {
+			Thread.sleep(WAIT_BEFORE_MOVE);
+		} catch (InterruptedException e1) {
+			e1.printStackTrace();
 		}
 	}
 
@@ -158,6 +169,7 @@ public class RemoteController extends Thread {
 			direction = 0;
 
 			while(upOrders.isEmpty() && downOrders.isEmpty()) {
+				hasPassengers = false;
 				newOrder.await();
 			}
 
@@ -296,18 +308,20 @@ public class RemoteController extends Thread {
 
 			if(c.direction == -1)  {
 				if(currentOrder != null) {
-					if(c.floor > currentOrder.floor && (double) c.floor < position) {
+					if((c.floor > currentOrder.floor && (double) c.floor < position) ||
+							(!hasPassengers && c.floor > target)) {
 						downOrders.add(currentOrder);
 						currentOrder = c;
 						target = c.floor;
 						return true;
-					} 
+					}
 				} 
 				downOrders.add(c);
 
 			} else {
 				if(currentOrder != null) {
-					if(c.floor < currentOrder.floor && (double) c.floor > position) {
+					if((c.floor < currentOrder.floor && (double) c.floor > position) ||
+							(!hasPassengers && c.floor < target)) {
 						upOrders.add(currentOrder);
 						currentOrder = c;
 						target = c.floor;
@@ -396,6 +410,7 @@ public class RemoteController extends Thread {
 			positionLock.lock();
 			try {
 				c.send("m " + id + " 0");
+				motor = 0;
 				stop.signal();
 			} finally {
 				positionLock.unlock();
@@ -492,6 +507,10 @@ public class RemoteController extends Thread {
 
 	public int getID() {
 		return id;
+	}
+	
+	public boolean gotPassengers() {
+		return hasPassengers;
 	}
 }
 
