@@ -18,6 +18,7 @@ public class RemoteController extends Thread {
 	private double position = 0;
 	private int direction = 0;
 	private int target = 0;
+	private int scale = 0;
 
 	private Communicator c;
 	private ButtonOrderQue buttonOrderQue;
@@ -346,13 +347,19 @@ public class RemoteController extends Thread {
 		positionLock.lock();
 		try {
 			position = pos;
-			if(Math.abs(pos - (double) target) < 0.05) {
+			
+			if((motor == 1 && position >= (double) target - Elevators.step) ||
+				(motor == -1 && position <= (double) target + Elevators.step))  {
+				
 				c.send("m " + id + " 0");
 				motor = 0;
 				stop.signal();
 			}
-			if (Math.abs(pos - Math.round(pos)) < 0.05) {
-				c.send("s " + id + " " + Math.round((float) pos));
+			
+			int floor = Math.round((float) position);
+			if (scale != floor) {
+				scale = floor;
+				c.send("s " + id + " " + floor);
 			}
 		} finally {
 			positionLock.unlock();
