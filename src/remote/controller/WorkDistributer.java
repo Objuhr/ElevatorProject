@@ -69,13 +69,9 @@ public class WorkDistributer extends Thread {
 		}
 
 		if(target != null) {
-			System.err.println("Dist tries to give ele: " + target.getID() + 
-					" bo: floor=" + order.floor + " dir=" + order.direction);
 			// Try to put request
 			if(target.putRequest(order)) {
 				orderQue.acceptOrder(order);
-				System.err.println("Dist gave ele: " + target.getID() + 
-						" bo: floor=" + order.floor + " dir=" + order.direction);
 			}
 		}
 	}
