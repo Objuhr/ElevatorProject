@@ -21,6 +21,16 @@ public class ButtonOrderQue {
 		}
 	}
 
+	public void returnOrder(ButtonOrder b) {
+		queLock.lock();
+		try {
+			pendingOrders.add(b);
+			acceptedOrders.remove(b);
+		} finally {
+			
+		}
+	}
+	
 	public void carriedOut(ButtonOrder b) {
 		queLock.lock();
 		try {
