@@ -100,14 +100,14 @@ public class WorkDistributer extends Thread {
 			}
 
 			// If elevatorDirection != button.direction
-		} else if(r.getMotor() != elevatorDirection && !r.gotPassengers()){
+		} else if(r.getMotor() == button.direction && !r.gotPassengers()){
 
 			if(elevatorDirection == 1) {
-				if((double)button.floor < r.getPosition()) {
+				if((double)button.floor < r.getPosition() && button.floor > r.getTarget()) {
 					return (int) Math.abs(r.getPosition() - button.floor);
 				}
 			} else if(elevatorDirection == -1) {
-				if((double)button.floor > r.getPosition()) {
+				if((double)button.floor > r.getPosition() && button.floor < r.getTarget()) {
 					return (int) Math.abs(r.getPosition() - button.floor);
 				}
 			}

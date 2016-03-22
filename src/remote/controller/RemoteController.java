@@ -503,6 +503,7 @@ public class RemoteController extends Thread {
 		orderLock.lock();
 		try {
 			stopped = false;
+			hasPassengers = true;
 			if(floor < (double) position) {
 				ButtonOrder order = new ButtonOrder(floor, -1);
 				if(!orderExist(order)) {
