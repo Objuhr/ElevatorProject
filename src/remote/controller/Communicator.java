@@ -8,26 +8,38 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.concurrent.locks.ReentrantLock;
 
+/**************************************************
+ * 
+ * Instance used to communicate over the tcp 
+ * connection.
+ * 
+ **************************************************/
+
 public class Communicator {
-	private BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-	private PrintStream p = System.out;
-	private ReentrantLock sendLock = new ReentrantLock();
+	private BufferedReader in = new BufferedReader(new InputStreamReader(System.in)); 	// Used to read InputStream
+	private PrintStream p = System.out;													// Used to write to OutputStream
 	
-	
+	/*
+	 * Instantiate the communicator with a given output 
+	 * and input stream
+	 */
 	public Communicator(OutputStream os, InputStream is) {
 		in = new BufferedReader(new InputStreamReader(is));
 		p = new PrintStream(os);
 	}
 
+	/*
+	 * Used for other instances to send to send to the Gui
+	 * over the OutputStream
+	 */
 	public void send(String send) {
-		sendLock.lock();
-		try {
 			p.println(send);
-		} finally {
-			sendLock.unlock();
-		}
 	}
 
+	/*
+	 * Blocking receive call, only return when there have
+	 * been anything sent throught the InputStream
+	 */
 	public String recieve() {
 		String input = null;
 
@@ -38,6 +50,6 @@ public class Communicator {
 				e.printStackTrace();
 			}
 		}
-		return new String(input);
+		return input;
 	}
 }

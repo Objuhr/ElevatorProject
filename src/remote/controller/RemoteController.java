@@ -6,60 +6,77 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import elevator.Elevators;
 
+/******************************************************
+ * 
+ * Class that is spawned as a thread. The thread 
+ * maneuver and elevator based on the current position
+ * and orders received for the specific elevator
+ *
+ ******************************************************/
+
 public class RemoteController extends Thread {
-	public static final int TIME_DOORS_ARE_OPEN = 1000;
-	public static final int WAIT_BEFORE_MOVE = 200;
+	public static final int TIME_DOORS_ARE_OPEN = 1000;		// Time the Doors are open before the start to close again
+	public static final int WAIT_BEFORE_MOVE = 200;			// Time after doors close before the elevator start to move again
 
-	private int id = - 1;
-	private int motor = 0;
+	private int id = - 1;		// The id of the elevator the controller corresponds to
+	private int motor = 0;		// Current direction of the motor
 
-	private LinkedList<ButtonOrder> upOrders = new LinkedList<ButtonOrder>();
-	private LinkedList<ButtonOrder> downOrders = new LinkedList<ButtonOrder>();
+	private LinkedList<ButtonOrder> upOrders = new LinkedList<ButtonOrder>();		// Used to store all order in upwards direction
+	private LinkedList<ButtonOrder> downOrders = new LinkedList<ButtonOrder>();		// Used to store all order in downwards direction
 
-	private double position = 0;
-	private int direction = 0;
-	private int target = 0;
-	private int scale = 0;
+	private double position = 0;	// Store the current position
+	private int direction = 0;		// Store the direction of the target elevator order
+	private int target = 0;			// Store the floor of the target elevator order
+	private int scale = 0;			// Store the current scale value
 
-	private Communicator c;
-	private ButtonOrderQue buttonOrderQue;
-	private ButtonOrder currentOrder = null;
+	private Communicator communicator;			// Used to communicate over the tcp connection
+	private ButtonOrderQue buttonOrderQue;		// Reference to the common buttonOrderQue
+	private ButtonOrder currentOrder = null;	// The current order the elevator is moving towards
 
-	private ReentrantLock orderLock = new ReentrantLock();
-	private Condition newOrder = orderLock.newCondition();
+	private ReentrantLock orderLock = new ReentrantLock();	// Lock that creates mutual exclusions to the linkedLists(upOrders and downOrder)
+	private Condition newOrder = orderLock.newCondition();	// Condition variable that is signaled when new orders are added to the remoteController
 
-	private ReentrantLock positionLock = new ReentrantLock();
-	private Condition stop = positionLock.newCondition();
+	private ReentrantLock positionLock = new ReentrantLock();	// Lock that prevent race conditions for when updating the current position
+	private Condition stop = positionLock.newCondition();		// Condition variable that is signaled when the elevator is stopped
 
-	private ReentrantLock doorLock = new ReentrantLock();
-	private Condition doorOpenedOrClosed = doorLock.newCondition();
-	private int doorMovements = 0;
-	private boolean doorsAreOpening = false;
+	private ReentrantLock doorLock = new ReentrantLock();				// Lock that ensures mutual exclusion when handling the door
+	private Condition doorOpenedOrClosed = doorLock.newCondition();		// Condition variable that is signaled when the door is opened of closed
+	private int doorMovements = 0;										// Store the amount of movements the door has made
+	private boolean doorsAreOpeningAndClosing = false;					// Indicate if the doors are currently moving
 
-	private boolean stopped = false;
-	private boolean hasPassengers = false;
-	private boolean doNotOpenDoors = false;
+	private boolean stopped = false;			// Indicate if the elevator have been stopped
+	private boolean hasPassengers = false;		// Indicate if the elevator can have passengers
+	private boolean doNotOpenDoors = false;		// Prevent the doors from opening when elevator is stopped if set to true
 
+	/*
+	 * Constructor for a remoteController with a specific id for the
+	 * elevator it is controlling, a reference to the communicator and
+	 * a reference to the buttonOrderQue
+	 */
 	public RemoteController(int id, Communicator c, ButtonOrderQue q) {
 		this.id = id;
-		this.c = c;
+		this.communicator = c;
 		this.buttonOrderQue = q;
 	}
 
+	/*
+	 * When the remote controller thread run it sets the next target 
+	 * order, start to move the elevator in the right direction then
+	 * wait for arrival
+	 */
 	@Override
 	public void run() {
-		Thread.currentThread().setPriority(Thread.NORM_PRIORITY - 1);
 		while(true) {
-			nextOrder();
+			setNextTarget();
 			move();
 			awaitArrival();
 		}
 	}
 
-	/**************************************************
-	   Functions used by the remoteControlle thread
-	 **************************************************/
-
+	/*
+	 * Function that suspends the remoteController thread until
+	 * the elevator is stopped and the motor is set to zero
+	 */
 	private void awaitArrival() {
 		positionLock.lock();
 		try {
@@ -81,7 +98,7 @@ public class RemoteController extends Thread {
 					buttonOrderQue.carriedOut(currentOrder);
 					currentOrder = null;
 				}
-				emptyQues();
+				emptyQues(); 	// Return all orders if stopped
 				direction = 0;
 				return;
 			}
@@ -95,15 +112,22 @@ public class RemoteController extends Thread {
 		currentOrder = null; 
 	}
 
+	/*
+	 * Call from the remoteController to start opening the doors,
+	 * suspends the calling thread until the doors are open, after
+	 * a delay the doors are set to close again. The calling thread 
+	 * is suspended again until they are fully closed
+	 */
 	private void openDoors() {
 		doorLock.lock();
 		try {
 			if(doNotOpenDoors) return;
 			
-			doorsAreOpening = true;
+			doorsAreOpeningAndClosing = true;
 			doorMovements = 0;
-			c.send("d " + id + " 1");
+			communicator.send("d " + id + " 1");
 
+			// Wait until doors are fully open
 			while(doorMovements < 4) {
 				doorOpenedOrClosed.await();
 			}
@@ -122,14 +146,15 @@ public class RemoteController extends Thread {
 
 		doorLock.lock();
 		try {
-			c.send("d " + id + " -1");
 			doorMovements = 0;
+			communicator.send("d " + id + " -1");
 
+			// Wait until doors are fully closed
 			while(doorMovements < 4) {
 				doorOpenedOrClosed.await();
 			}
 
-			doorsAreOpening = false;
+			doorsAreOpeningAndClosing = false;
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} finally {
@@ -143,12 +168,17 @@ public class RemoteController extends Thread {
 		}
 	}
 
-	private void nextOrder() {
+	/*
+	 * Extract the appropriate order to be next target
+	 * and set it to be the current target for the current
+	 * remote controller
+	 */
+	private void setNextTarget() {
 		orderLock.lock();
 		try {
 			if(direction == 1) {
 				if(!upOrders.isEmpty()) {
-					if(mostImidietOrder(upOrders)) {
+					if(mostImmediateOrder(upOrders)) {
 						return;
 					} else if (!downOrders.isEmpty()) {
 						direction = -1;
@@ -156,10 +186,9 @@ public class RemoteController extends Thread {
 						return;
 					}
 				}
-			}
-			if(direction == -1) {
+			} else if(direction == -1) {
 				if(!downOrders.isEmpty()){
-					if(mostImidietOrder(downOrders)) {
+					if(mostImmediateOrder(downOrders)) {
 						return;
 					} else if (!upOrders.isEmpty()) {
 						direction = 1;
@@ -191,7 +220,14 @@ public class RemoteController extends Thread {
 		}
 	}
 
-
+	/*
+	 * Get the most extreme order. If the direction of the orders
+	 * are upwards the order from the lowest floor is set to be
+	 * current target.  If the direction of the orders are downwards
+	 * the order from the highest floor is set to be current target.
+	 * Is always called with from a thread that holds the orderLock 
+	 * in the current remoteController.
+	 */
 	private void mostDistantOrder(LinkedList<ButtonOrder> orders) {
 		while(orders.isEmpty())
 		{
@@ -224,25 +260,29 @@ public class RemoteController extends Thread {
 			orders.remove(distant);
 			target = currentOrder.floor;
 		} else {
-			mostImidietOrder(orders);
+			mostDistantOrder(orders);
 		}
 	}
 
+	/*
+	 * Set the elevator in motion towards the current target
+	 * of the remoteController
+	 */
 	private void move() {
 		positionLock.lock();
 		try {
 			if(Math.abs(position - (double) target) < 0.05) {
 				stop.signal();
 				motor = 0;
-				c.send("m " + id + " 0");
+				communicator.send("m " + id + " 0");
 				return;
 			}
 
 			if(target > position) {
-				c.send("m " + id + " 1");
+				communicator.send("m " + id + " 1");
 				motor = 1;
 			} else {
-				c.send("m " + id + " -1");
+				communicator.send("m " + id + " -1");
 				motor = -1;
 			}
 		} finally {
@@ -257,6 +297,11 @@ public class RemoteController extends Thread {
 		}
 	}
 
+	/*
+	 * Return all orders of the current remoteController,
+	 * is called when the elevator is stopped and the requests
+	 * need to be pickup by another elevator.
+	 */
 	private void emptyQues() {
 		for(ButtonOrder o : downOrders) {
 			buttonOrderQue.carriedOut(o);
@@ -271,7 +316,13 @@ public class RemoteController extends Thread {
 		upOrders = new LinkedList<ButtonOrder>();
 	}
 
-	private boolean mostImidietOrder(LinkedList<ButtonOrder> orders) {
+	/*
+	 * Set the current target to the most immediate order in the
+	 * elevators current direction. If the direction is downwards 
+	 * the closest order that is on a lower floor than the 
+	 * elevator is picked as the next target.
+	 */
+	private boolean mostImmediateOrder(LinkedList<ButtonOrder> orders) {
 		while(orders.isEmpty())
 		{
 			try {
@@ -357,7 +408,7 @@ public class RemoteController extends Thread {
 		
 		positionLock.lock();
 		try {
-			c.send("m " + id + " 0");
+			communicator.send("m " + id + " 0");
 			motor = 0;
 			stop.signal();
 		} finally {
@@ -432,7 +483,7 @@ public class RemoteController extends Thread {
 	public void setPosition(double pos) {
 		doorLock.lock();
 		try {
-			if(doorsAreOpening) {
+			if(doorsAreOpeningAndClosing) {
 				doorMoved();
 				return;
 			}
@@ -447,7 +498,7 @@ public class RemoteController extends Thread {
 			if((motor == 1 && position >= (double) target - Elevators.step) ||
 					(motor == -1 && position <= (double) target + Elevators.step))  {
 
-				c.send("m " + id + " 0");
+				communicator.send("m " + id + " 0");
 				motor = 0;
 				stop.signal();
 			}
@@ -455,7 +506,7 @@ public class RemoteController extends Thread {
 			int floor = Math.round((float) position);
 			if (scale != floor) {
 				scale = floor;
-				c.send("s " + id + " " + floor);
+				communicator.send("s " + id + " " + floor);
 			}
 		} finally {
 			positionLock.unlock();
@@ -491,7 +542,7 @@ public class RemoteController extends Thread {
 
 			positionLock.lock();
 			try {
-				c.send("m " + id + " 0");
+				communicator.send("m " + id + " 0");
 				motor = 0;
 				stop.signal();
 			} finally {
@@ -508,7 +559,7 @@ public class RemoteController extends Thread {
 				ButtonOrder order = new ButtonOrder(floor, -1);
 				if(!orderExist(order)) {
 
-					if(floor > target && direction == -1 && !doorsAreOpening) {
+					if(floor > target && direction == -1 && !doorsAreOpeningAndClosing) {
 						target = floor;
 						if(currentOrder != null)
 							downOrders.add(currentOrder);
@@ -525,7 +576,7 @@ public class RemoteController extends Thread {
 				ButtonOrder order = new ButtonOrder(floor, 1);
 				if(!orderExist(order)) {
 
-					if(floor < target && direction == 1 && !doorsAreOpening) {
+					if(floor < target && direction == 1 && !doorsAreOpeningAndClosing) {
 						target = floor;
 						if(currentOrder != null)
 							upOrders.add(currentOrder);
